@@ -4,8 +4,8 @@
 #include <dlib/optimization.h>
 
 struct Hypersphere {
-    const double* initial_elements;
-    const double* center;
+    double* initial_elements;
+    double* center;
     const double* ux;
     double radius;
     int num_elements;
@@ -31,10 +31,20 @@ double objective(const dlib::matrix<double, 0, 1>& params, const Hypersphere& hy
         });
 
     double neg_part = 0.0;
+    int total_elements = 0; // To count total number of elements across all hyperspheres
+
+    // Iterate over each hypersphere
     for (const auto& hs : other_hyperspheres) {
+        // Iterate over each element in the current hypersphere
         for (int i = 0; i < hs.num_elements; i++) {
             neg_part += squared_norm(&hs.initial_elements[i * dim], center, dim);
         }
+        total_elements += hs.num_elements; // Update the total count of elements
+    }
+
+    // Calculate the average
+    if (total_elements > 0) {
+        neg_part /= total_elements; // Average the squared distances
     }
 
     return radius * radius + pos_part - neg_part;

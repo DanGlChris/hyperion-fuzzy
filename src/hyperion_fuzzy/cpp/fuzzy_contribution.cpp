@@ -4,8 +4,8 @@
 #include <algorithm>
 
 struct Hypersphere {
-    const double* initial_elements;
-    const double* center;
+    double* initial_elements;
+    double* center;
     const double* ux;
     double radius;
     int num_elements;
