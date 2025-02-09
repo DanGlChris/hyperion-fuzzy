@@ -35,11 +35,12 @@ double objective(const dlib::matrix<double, 0, 1>& params, const Hypersphere& hy
 
     // Iterate over each hypersphere
     for (const auto& hs : other_hyperspheres) {
-        // Iterate over each element in the current hypersphere
-        for (int i = 0; i < hs.num_elements; i++) {
-            neg_part += squared_norm(&hs.initial_elements[i * dim], center, dim);
-        }
-        total_elements += hs.num_elements; // Update the total count of elements
+        // Use std::accumulate to sum the squared_norm of the first elements of the assignments
+        neg_part += std::accumulate(hs.assignments.begin(), hs.assignments.end(), 0.0,
+            [&](double sum, const std::tuple<const double*, int, double>& assignment) {
+                return sum + squared_norm(std::get<0>(assignment), center, dim);
+            });
+        total_elements += 1; // Update the total count of elements
     }
 
     // Calculate the average
