@@ -1,21 +1,10 @@
 import numpy as np
 import pandas as pd
-from scipy.optimize import minimize
 from memory_profiler import memory_usage
 import time
 from wrappers import Hypersphere, predict as ccp_predict, optimize_hypersphere as cpp_optimize_hypersphere, fuzzy_contribution as cpp_fuzzy_contribution
 
-class Hypersphere:
-    def __init__(self, center, radius, initial_elements):
-        self.center = np.asarray(center, dtype=np.float64)
-        self.radius = radius        
-        self.initial_elements = np.asarray(initial_elements, dtype=np.float64)
-        self.elements = []
-        self.assignments = []
-        self.ux = (1 / len(self.initial_elements)) * np.sum(self.initial_elements, axis=0)
-
-
-class FuzzyBinaryClassifier:
+class HyperionFuzzy:
     def __init__(self, num_clusters=2, gamma=1.0, sigma=0.005, E=1e-7, max_iterations=100):
         self.num_clusters = num_clusters
         self.gamma = gamma
@@ -29,15 +18,15 @@ class FuzzyBinaryClassifier:
         start_time = time.time()
         mem_usage_before = memory_usage()[0]
         
-        transformed_data = data.applymap(self.polynomial_mapping)
+        transformed_data = data.map(self.polynomial_mapping)
 
         self.positive_hyperspheres, self.negative_hyperspheres = self.initialize_hyperspheres(transformed_data, labels)
 
         for iteration in range(self.max_iterations):
             assignments = self.fuzzy(transformed_data)
 
-            if all(len(hypersphere.elements) == 0 for hypersphere in self.positive_hyperspheres) or \
-               all(len(hypersphere.elements) == 0 for hypersphere in self.negative_hyperspheres):
+            if all(len(hypersphere.assignments) == 0 for hypersphere in self.positive_hyperspheres) or \
+               all(len(hypersphere.assignments) == 0 for hypersphere in self.negative_hyperspheres):
                 break
 
         end_time = time.time()
@@ -49,7 +38,7 @@ class FuzzyBinaryClassifier:
         return assignments
 
     def predict(self, new_data):
-        transformed_data = new_data.applymap(self.polynomial_mapping)
+        transformed_data = new_data.map(self.polynomial_mapping)
 
         predictions = ccp_predict(transformed_data, self.positive_hyperspheres, self.negative_hyperspheres, self.sigma)
         return np.array(predictions)
@@ -85,9 +74,9 @@ class FuzzyBinaryClassifier:
     def fuzzy(self, data):
         assignments = []
         
+        # Reset assignments and elements for each hypersphere
         for hs in self.positive_hyperspheres + self.negative_hyperspheres:
             hs.assignments = []
-            hs.elements = []
 
         for x in data.values:
             cpp_fuzzy_contribution(
@@ -101,13 +90,13 @@ class FuzzyBinaryClassifier:
             )
 
             for pos_hs, neg_hs in zip(self.positive_hyperspheres, self.negative_hyperspheres):
-                if pos_hs.elements:
-                    cpp_optimize_hypersphere(hypersphere = pos_hs,
-                                             other_hyperspheres = self.negative_hyperspheres,
-                                            c1 = self.gamma)
-                if neg_hs.elements:
-                    cpp_optimize_hypersphere(hypersphere = neg_hs,
-                                             other_hyperspheres = self.positive_hyperspheres,
-                                            c1 = self.gamma)
+                if pos_hs.assignments:
+                    cpp_optimize_hypersphere(hypersphere=pos_hs,
+                                             other_hyperspheres=self.negative_hyperspheres,
+                                             c1=self.gamma)
+                if neg_hs.assignments:
+                    cpp_optimize_hypersphere(hypersphere=neg_hs,
+                                             other_hyperspheres=self.positive_hyperspheres,
+                                             c1=self.gamma)
 
         return assignments

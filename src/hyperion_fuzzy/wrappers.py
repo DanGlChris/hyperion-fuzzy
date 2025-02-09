@@ -89,7 +89,7 @@ def predict(transformed_data, positive_hyperspheres, negative_hyperspheres, sigm
 
     return predictions.tolist()
 
-def fuzzy_contribution(self, x, positive_hyperspheres, negative_hyperspheres, assignments, gamma, sigma, E):
+def fuzzy_contribution(x, positive_hyperspheres, negative_hyperspheres, assignments, gamma, sigma, E):
     x = np.asarray(x, dtype=np.float64)
     num_positive = len(positive_hyperspheres)
     num_negative = len(negative_hyperspheres)
@@ -136,12 +136,10 @@ def fuzzy_contribution(self, x, positive_hyperspheres, negative_hyperspheres, as
         assignm = (x, 1, contribution.value)
         assignments.append(assignm)
         positive_hyperspheres[0].assignments.append(assignm)
-        positive_hyperspheres[0].elements.append(x)
     elif assigned_class.value == -1:
         assignm = (x, -1, contribution.value)
         assignments.append(assignm)
         negative_hyperspheres[0].assignments.append(assignm)
-        negative_hyperspheres[0].elements.append(x)
     else:
         assignments.append((x, 0, 1))  # Noise
 
