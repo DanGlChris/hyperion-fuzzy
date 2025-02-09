@@ -1,60 +1,76 @@
-#include <vector>
 #include <cmath>
+#include <vector>
 #include <algorithm>
+#include <dlib/optimization.h>
 
-// Objective function to optimize hypersphere radius and center
-double objective(const std::vector<double>& params, const std::vector<std::vector<double>>& elements,
-                 const std::vector<std::vector<double>>& other_hyperspheres, double c1) {
-    double radius = params[0];
-    std::vector<double> center(params.begin() + 1, params.end());
+struct Hypersphere {
+    const double* initial_elements;
+    const double* center;
+    const double* ux;
+    double radius;
+    int num_elements;
+    std::vector<std::tuple<const double*, int, double>> assignments;
+};
 
-    // Positive part: sum of contributions
-    double pos_part = 0.0;
-    for (const auto& element : elements) {
-        double distance = 0.0;
-        for (size_t i = 0; i < center.size(); ++i) {
-            distance += (element[i] - center[i]) * (element[i] - center[i]);
-        }
-        pos_part += std::sqrt(distance);
+double squared_norm(const double* x, const double* x_prime, int dim) {
+    double sum = 0.0;
+    for (int i = 0; i < dim; i++) {
+        double diff = x[i] - x_prime[i];
+        sum += diff * diff;
     }
-    pos_part *= c1;
+    return sum;
+}
 
-    // Negative part: penalize overlap with other hyperspheres
+double objective(const dlib::matrix<double, 0, 1>& params, const Hypersphere& hypersphere, const std::vector<Hypersphere>& other_hyperspheres, double c1, int dim) {
+    double radius = params(0);
+    const double* center = &params(1);
+
+    double pos_part = c1 * std::accumulate(hypersphere.assignments.begin(), hypersphere.assignments.end(), 0.0,
+        [](double sum, const std::tuple<const double*, int, double>& assignment) {
+            return sum + std::get<2>(assignment);
+        });
+
     double neg_part = 0.0;
-    for (const auto& other_center : other_hyperspheres) {
-        double distance = 0.0;
-        for (size_t i = 0; i < center.size(); ++i) {
-            distance += (center[i] - other_center[i]) * (center[i] - other_center[i]);
+    for (const auto& hs : other_hyperspheres) {
+        for (int i = 0; i < hs.num_elements; i++) {
+            neg_part += squared_norm(&hs.initial_elements[i * dim], center, dim);
         }
-        neg_part += std::sqrt(distance);
     }
 
     return radius * radius + pos_part - neg_part;
 }
 
-// Gradient-free optimization (simple gradient descent for demonstration purposes)
-std::vector<double> optimize_hypersphere(const std::vector<double>& initial_params,
-                                         const std::vector<std::vector<double>>& elements,
-                                         const std::vector<std::vector<double>>& other_hyperspheres,
-                                         double c1, double learning_rate, int max_iters) {
-    std::vector<double> params = initial_params;
-
-    for (int iter = 0; iter < max_iters; ++iter) {
-        double current_obj = objective(params, elements, other_hyperspheres, c1);
-
-        // Update radius (first parameter)
-        params[0] -= learning_rate * (2 * params[0]);
-
-        // Update center (remaining parameters)
-        for (size_t i = 1; i < params.size(); ++i) {
-            params[i] -= learning_rate * (params[i]);
+extern "C" {
+    __declspec(dllexport) void optimize_hypersphere(
+        Hypersphere& hypersphere,
+        const std::vector<Hypersphere>& other_hyperspheres,
+        double c1,
+        double learning_rate,
+        int max_iterations,
+        double tolerance,
+        int dim
+    ) {
+        dlib::matrix<double, 0, 1> initial_params(dim + 1);
+        initial_params(0) = hypersphere.radius;
+        for (int i = 0; i < dim; ++i) {
+            initial_params(i + 1) = hypersphere.center[i];
         }
 
-        // Break if the improvement is negligible
-        if (std::abs(current_obj - objective(params, elements, other_hyperspheres, c1)) < 1e-6) {
-            break;
+        auto objective_wrapper = [&](const dlib::matrix<double, 0, 1>& params) -> double {
+            return objective(params, hypersphere, other_hyperspheres, c1, dim);
+        };
+
+        dlib::find_min_using_approximate_derivatives(
+            dlib::bfgs_search_strategy(),
+            dlib::objective_delta_stop_strategy(tolerance).be_verbose(),
+            objective_wrapper,
+            initial_params,
+            -1
+        );
+
+        hypersphere.radius = initial_params(0);
+        for (int i = 0; i < dim; ++i) {
+            hypersphere.center[i] = initial_params(i + 1);
         }
     }
-
-    return params;
 }

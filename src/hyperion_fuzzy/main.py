@@ -1,20 +1,24 @@
 import numpy as np
 import pandas as pd
-from hyperion_fuzzy.wrappers import compute_distances, conformal_kernel_cpp, fuzzy_contribution_cpp, optimize_hypersphere_cpp
+from scipy.optimize import minimize
+from memory_profiler import memory_usage
+import time
+from wrappers import Hypersphere, predict as ccp_predict, optimize_hypersphere as cpp_optimize_hypersphere, fuzzy_contribution as cpp_fuzzy_contribution
 
 class Hypersphere:
     def __init__(self, center, radius, initial_elements):
-        self.center = center
+        self.center = np.asarray(center, dtype=np.float64)
         self.radius = radius        
-        self.initial_elements = initial_elements
+        self.initial_elements = np.asarray(initial_elements, dtype=np.float64)
         self.elements = []
         self.assignments = []
         self.ux = (1 / len(self.initial_elements)) * np.sum(self.initial_elements, axis=0)
 
-class HyperionFuzzy:
-    def __init__(self, num_clusters=2, c1=1.0, sigma=0.005, E=1e-7, max_iterations=100):
+
+class FuzzyBinaryClassifier:
+    def __init__(self, num_clusters=2, gamma=1.0, sigma=0.005, E=1e-7, max_iterations=100):
         self.num_clusters = num_clusters
-        self.c1 = c1
+        self.gamma = gamma
         self.sigma = sigma
         self.E = E
         self.max_iterations = max_iterations
@@ -22,7 +26,11 @@ class HyperionFuzzy:
         self.negative_hyperspheres = []
 
     def train(self, data, labels):
+        start_time = time.time()
+        mem_usage_before = memory_usage()[0]
+        
         transformed_data = data.applymap(self.polynomial_mapping)
+
         self.positive_hyperspheres, self.negative_hyperspheres = self.initialize_hyperspheres(transformed_data, labels)
 
         for iteration in range(self.max_iterations):
@@ -32,46 +40,42 @@ class HyperionFuzzy:
                all(len(hypersphere.elements) == 0 for hypersphere in self.negative_hyperspheres):
                 break
 
+        end_time = time.time()
+        mem_usage_after = memory_usage()[0]
+
+        print(f"Training Time: {end_time - start_time:.4f} seconds")
+        print(f"Memory Usage: {mem_usage_after - mem_usage_before:.4f} MiB")
+
         return assignments
 
     def predict(self, new_data):
         transformed_data = new_data.applymap(self.polynomial_mapping)
-        predictions = []
 
-        for x in transformed_data.values:
-            memberships_p = [conformal_kernel_cpp(x, hs.center, hs.initial_elements, self.sigma, self.E) 
-                             for hs in self.positive_hyperspheres]
-            memberships_n = [conformal_kernel_cpp(x, hs.center, hs.initial_elements, self.sigma, self.E) 
-                             for hs in self.negative_hyperspheres]
-
-            if max(memberships_p) > max(memberships_n):
-                predictions.append(1)
-            elif max(memberships_n) > max(memberships_p):
-                predictions.append(-1)
-            else:
-                predictions.append(0)
-
+        predictions = ccp_predict(transformed_data, self.positive_hyperspheres, self.negative_hyperspheres, self.sigma)
         return np.array(predictions)
 
     def initialize_hyperspheres(self, data, labels):
-
         class_p = data[labels == 1]
         class_n = data[labels == -1]
-
+        
         if len(class_p) < self.num_clusters or len(class_n) < self.num_clusters:
-            raise ValueError("Not enough data points to initialize the specified number of clusters.")
-
+            raise ValueError("Not enough data points to initialize clusters.")
+        
         positive_hyperspheres = []
         negative_hyperspheres = []
 
         for _ in range(self.num_clusters):
             random_point_p = class_p.iloc[np.random.choice(class_p.shape[0])]
             random_point_n = class_n.iloc[np.random.choice(class_n.shape[0])]
-
+            
             radius = np.linalg.norm(random_point_p - random_point_n) / 3
-
-            positive_hyperspheres.append(Hypersphere(random_point_p.values, radius, class_p.values))
-            negative_hyperspheres.append(Hypersphere(random_point_n.values, radius, class_n.values))
+            
+            positive_hyperspheres.append(
+                Hypersphere(random_point_p.values, radius, class_p.values)
+            )
+            negative_hyperspheres.append(
+                Hypersphere(random_point_n.values, radius, class_n.values)
+            )
 
         return positive_hyperspheres, negative_hyperspheres
 
@@ -79,39 +83,31 @@ class HyperionFuzzy:
         return np.exp(x)
 
     def fuzzy(self, data):
-
         assignments = []
+        
+        for hs in self.positive_hyperspheres + self.negative_hyperspheres:
+            hs.assignments = []
+            hs.elements = []
 
         for x in data.values:
-            label, contribution = fuzzy_contribution_cpp(
+            cpp_fuzzy_contribution(
                 x, 
-                [hs.center for hs in self.positive_hyperspheres],
-                [hs.center for hs in self.negative_hyperspheres],
-                [hs.initial_elements for hs in self.positive_hyperspheres],
-                [hs.initial_elements for hs in self.negative_hyperspheres],
-                self.c1,
+                self.positive_hyperspheres,
+                self.negative_hyperspheres,
+                assignments,
+                self.gamma,
                 self.sigma,
                 self.E
             )
-            assignments.append((x, label, contribution))
 
-        # Optimize hyperspheres using C++ implementation
-        for pos_hs, neg_hs in zip(self.positive_hyperspheres, self.negative_hyperspheres):
-            self.optimize_hypersphere(pos_hs, self.negative_hyperspheres)
-            self.optimize_hypersphere(neg_hs, self.positive_hyperspheres)
+            for pos_hs, neg_hs in zip(self.positive_hyperspheres, self.negative_hyperspheres):
+                if pos_hs.elements:
+                    cpp_optimize_hypersphere(hypersphere = pos_hs,
+                                             other_hyperspheres = self.negative_hyperspheres,
+                                            c1 = self.gamma)
+                if neg_hs.elements:
+                    cpp_optimize_hypersphere(hypersphere = neg_hs,
+                                             other_hyperspheres = self.positive_hyperspheres,
+                                            c1 = self.gamma)
 
         return assignments
-    
-    def optimize_hypersphere(self, hypersphere, other_hyperspheres):
-
-        initial_params = [hypersphere.radius] + list(hypersphere.center)
-        
-        # Collect centers of other hyperspheres
-        other_centers = [hs.center for hs in other_hyperspheres]
-
-        # Optimize using the C++ function
-        optimized_params = optimize_hypersphere_cpp(initial_params, hypersphere.initial_elements, other_centers, self.c1)
-
-        # Update the hypersphere properties
-        hypersphere.radius = optimized_params[0]
-        hypersphere.center = optimized_params[1:]
