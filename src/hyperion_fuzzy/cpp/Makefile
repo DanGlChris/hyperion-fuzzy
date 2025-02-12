@@ -1,39 +1,23 @@
 CXX = g++
-CXXFLAGS = -O3 -std=c++17 -fPIC -I../dlib
-LDFLAGS = -shared -L../dlib/build/dlib -ldlib
+CXXFLAGS = -std=c++17 -fPIC -O2
+LDFLAGS = -shared
 
-BUILD_DIR = ../build
+SRCS = optimize_hypersphere.cpp fuzzy_contribution.cpp
+OBJS = $(SRCS:.cpp=.o)
+TARGETS = ../build/optimize_hypersphere.dll ../build/fuzzy_contribution.dll
 
-# Check the operating system
-ifeq ($(OS),Windows_NT)
-    # Windows
-    EXT = dll
-    LDFLAGS += -Wl,--out-implib,libdlib.a
-else ifeq ($(shell uname),Darwin)
-    # macOS
-    EXT = dylib
-else
-    # Assume Linux or other Unix-like OS
-    EXT = so
-endif
+all: $(TARGETS)
 
-.PHONY: all dlib clean
+../build/optimize_hypersphere.dll: optimize_hypersphere.o
+	$(CXX) $(LDFLAGS) -o $@ $^
 
-all: dlib $(BUILD_DIR) fuzzy_contribution.$(EXT) optimize_hypersphere.$(EXT)
+../build/fuzzy_contribution.dll: fuzzy_contribution.o
+	$(CXX) $(LDFLAGS) -o $@ $^
 
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
-
-#dlib:
-#	git clone https://github.com/DanGlChris/dlib.git
-#	cd ../dlib && mkdir -p build && cd build && cmake .. -G "Unix Makefiles" && $(MAKE)
-
-fuzzy_contribution.$(EXT): fuzzy_contribution.cpp $(BUILD_DIR) dlib
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/fuzzy_contribution.$(EXT) fuzzy_contribution.cpp
-
-optimize_hypersphere.$(EXT): optimize_hypersphere.cpp $(BUILD_DIR) dlib
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $(BUILD_DIR)/optimize_hypersphere.$(EXT) optimize_hypersphere.cpp
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(BUILD_DIR)/*.$(EXT)
-	rm -rf ../dlib/build
+	rm -f $(OBJS) $(TARGETS)
+
+.PHONY: all clean

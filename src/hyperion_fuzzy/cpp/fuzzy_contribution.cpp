@@ -2,15 +2,7 @@
 #include <limits>
 #include <vector>
 #include <algorithm>
-
-struct Hypersphere {
-    double* initial_elements;
-    double* center;
-    const double* ux;
-    double radius;
-    int num_elements;
-    std::vector<std::tuple<const double*, int, double>> assignments;
-};
+#include "hypersphere.h"
 
 double squared_norm(const double* x, const double* x_prime, int dim) {
     double sum = 0.0;
