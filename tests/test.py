@@ -1,7 +1,12 @@
+import sys
+import os
+# Ensure the src directory is in the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from src.hyperion_fuzzy.HyperionFuzzy import HyperionFuzzy
+from hyperion_fuzzy.HyperionFuzzy import HyperionFuzzy
 
 # Load data from CSV file
 file_path = "data/Student's Dropout and Academic Success.csv"

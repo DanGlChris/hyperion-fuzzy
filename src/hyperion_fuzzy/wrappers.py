@@ -6,16 +6,24 @@ import numpy as np
 
 # Determine the appropriate file extension based on the operating system
 if os.name == 'nt':  # Windows
-    fuzzy_lib_path = "../build/fuzzy_contribution.dll"
-    optimize_lib_path = "../build/optimize_hypersphere.dll"
+    fuzzy_lib_name = "fuzzy_contribution.dll"
+    optimize_lib_name = "optimize_hypersphere.dll"
+    test_lib_name = "test.dll"
 elif sys.platform == 'darwin':  # macOS
-    fuzzy_lib_path = "../build/fuzzy_contribution.dylib"
-    optimize_lib_path = "../build/optimize_hypersphere.dylib"
+    fuzzy_lib_name = ".fuzzy_contribution.dylib"
+    optimize_lib_name = "optimize_hypersphere.dylib"
+    test_lib_name = "test.dylib"
 else:  # Assume Linux or other Unix-like OS
-    fuzzy_lib_path = "../build/fuzzy_contribution.so"
-    optimize_lib_path = "../build/optimize_hypersphere.so"
+    fuzzy_lib_name = "fuzzy_contribution.so"
+    optimize_lib_name = "optimize_hypersphere.so"
+    test_lib_name = "test.so"
 # Load compiled shared libraries
 try:
+    fuzzy_lib_path = os.path.join(os.path.dirname(__file__), 'build', fuzzy_lib_name)
+    optimize_lib_path = os.path.join(os.path.dirname(__file__), 'build', optimize_lib_name)
+    test_lib_path = os.path.join(os.path.dirname(__file__), 'build', test_lib_name)
+    
+    test_lib = ctypes.CDLL(test_lib_path)
     fuzzy_lib = ctypes.CDLL(fuzzy_lib_path)
     optimize_lib = ctypes.CDLL(optimize_lib_path)
 except OSError as e:

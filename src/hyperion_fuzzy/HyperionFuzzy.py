@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from memory_profiler import memory_usage
 import time
-from wrappers import Hypersphere, predict as ccp_predict, optimize_hypersphere as cpp_optimize_hypersphere, fuzzy_contribution as cpp_fuzzy_contribution
+from .wrappers import Hypersphere, predict as ccp_predict, optimize_hypersphere as cpp_optimize_hypersphere, fuzzy_contribution as cpp_fuzzy_contribution
 
 class HyperionFuzzy:
     def __init__(self, num_clusters=2, gamma=1.0, sigma=0.005, E=1e-7, max_iterations=100):

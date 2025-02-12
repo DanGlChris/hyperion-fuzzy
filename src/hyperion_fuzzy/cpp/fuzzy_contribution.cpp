@@ -42,7 +42,7 @@ double conformal_kernel(const double* x, const double* x_prime, const Hyperspher
 }
 
 extern "C" {
-    __declspec(dllexport) void fuzzy_contribution(
+    __declspec(dllexport) void __cdecl fuzzy_contribution(
         const double* x,
         const Hypersphere* positive_hyperspheres, const Hypersphere* negative_hyperspheres,
         int num_positive, int num_negative, int dim,
@@ -74,13 +74,15 @@ extern "C" {
         }
 
         if (min_positive < min_negative) {
-            d_to_other_boundary = std::abs(min_negative - negative_hyperspheres[assigned_hypersphere_n].radius);
+            const Hypersphere& neg_sphere = negative_hyperspheres[assigned_hypersphere_n];
+            d_to_other_boundary = std::abs(min_negative - neg_sphere.radius);
             double c_to_cen = 1 - 1 / std::sqrt(min_positive * min_positive + gamma);
             double c_to_boundary = 1 - 1 / std::sqrt(d_to_other_boundary * d_to_other_boundary + gamma);
             *contribution = std::max(c_to_cen, c_to_boundary);
             *assigned_class = 1;
         } else if (min_positive > min_negative) {
-            d_to_other_boundary = std::abs(min_positive - positive_hyperspheres[assigned_hypersphere_p].radius);
+            const Hypersphere& ps_sphere = positive_hyperspheres[assigned_hypersphere_p];
+            d_to_other_boundary = std::abs(min_positive - ps_sphere.radius);
             double c_to_cen = 1 - 1 / std::sqrt(min_negative * min_negative + gamma);
             double c_to_boundary = 1 - 1 / std::sqrt(d_to_other_boundary * d_to_other_boundary + gamma);
             *contribution = std::max(c_to_cen, c_to_boundary);
@@ -91,7 +93,7 @@ extern "C" {
         }
     }
 
-    __declspec(dllexport) void predict(
+    __declspec(dllexport) void __cdecl predict(
         const double* transformed_data, int num_samples, int dim,
         const Hypersphere* positive_hyperspheres, int num_positive,
         const Hypersphere* negative_hyperspheres, int num_negative,

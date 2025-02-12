@@ -2,9 +2,9 @@ CXX = g++
 CXXFLAGS = -std=c++17 -fPIC -O2
 LDFLAGS = -shared
 
-SRCS = optimize_hypersphere.cpp fuzzy_contribution.cpp
+SRCS = optimize_hypersphere.cpp fuzzy_contribution.cpp test.cpp
 OBJS = $(SRCS:.cpp=.o)
-TARGETS = ../build/optimize_hypersphere.dll ../build/fuzzy_contribution.dll
+TARGETS = ../build/optimize_hypersphere.dll ../build/fuzzy_contribution.dll ../build/test.dll
 
 all: $(TARGETS)
 
@@ -12,6 +12,9 @@ all: $(TARGETS)
 	$(CXX) $(LDFLAGS) -o $@ $^
 
 ../build/fuzzy_contribution.dll: fuzzy_contribution.o
+	$(CXX) $(LDFLAGS) -o $@ $^
+
+../build/test.dll: test.o
 	$(CXX) $(LDFLAGS) -o $@ $^
 
 %.o: %.cpp
