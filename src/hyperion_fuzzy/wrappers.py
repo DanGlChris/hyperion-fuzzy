@@ -1,11 +1,23 @@
 import ctypes
+import sys
+import os
 from typing import Tuple
 import numpy as np
 
+# Determine the appropriate file extension based on the operating system
+if os.name == 'nt':  # Windows
+    fuzzy_lib_path = "../build/fuzzy_contribution.dll"
+    optimize_lib_path = "../build/optimize_hypersphere.dll"
+elif sys.platform == 'darwin':  # macOS
+    fuzzy_lib_path = "../build/fuzzy_contribution.dylib"
+    optimize_lib_path = "../build/optimize_hypersphere.dylib"
+else:  # Assume Linux or other Unix-like OS
+    fuzzy_lib_path = "../build/fuzzy_contribution.so"
+    optimize_lib_path = "../build/optimize_hypersphere.so"
 # Load compiled shared libraries
 try:
-    fuzzy_lib = ctypes.CDLL("../build/fuzzy_contribution.so")
-    optimize_lib = ctypes.CDLL("../build/optimize_hypersphere.so")
+    fuzzy_lib = ctypes.CDLL(fuzzy_lib_path)
+    optimize_lib = ctypes.CDLL(optimize_lib_path)
 except OSError as e:
     raise RuntimeError(f"Failed to load shared libraries: {e}")
 

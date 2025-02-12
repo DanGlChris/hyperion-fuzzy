@@ -1,20 +1,27 @@
 import pandas as pd
 import numpy as np
-from src.hyperion_fuzzy.main import HyperionFuzzy
+from sklearn.model_selection import train_test_split
+from src.hyperion_fuzzy.HyperionFuzzy import HyperionFuzzy
 
-# Generate synthetic data
-np.random.seed(42)
-data = pd.DataFrame(np.random.rand(100, 2), columns=["x1", "x2"])
-labels = np.random.choice([1, -1], size=100)
+# Load data from CSV file
+file_path = "data/Student's Dropout and Academic Success.csv"
+data = pd.read_csv(file_path)
+
+# Assuming the CSV has columns 'x1' and 'x2' for features and 'label' for labels
+# Adjust the column names based on your actual CSV file structure
+features = data[['x1', 'x2']]
+labels = data['Target']
+
+# Split the data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=0.2, random_state=42)
 
 # Initialize model
 model = HyperionFuzzy(num_clusters=2, max_iterations=10)
 
 # Train the model
-assignments = model.train(data, labels)
+assignments = model.train(X_train, y_train)
 
 # Predict using the trained model
-new_data = pd.DataFrame(np.random.rand(10, 2), columns=["x1", "x2"])
-predictions = model.predict(new_data)
+predictions = model.predict(X_test)
 
 print("Predictions:", predictions)
