@@ -4,6 +4,7 @@
 #include <algorithm>
 #include "hypersphere.h"
 
+// Compute squared Euclidean distance
 double squared_norm(const double* x, const double* x_prime, int dim) {
     double sum = 0.0;
     for (int i = 0; i < dim; i++) {
@@ -13,11 +14,13 @@ double squared_norm(const double* x, const double* x_prime, int dim) {
     return sum;
 }
 
+// Radial Basis Function (RBF) Kernel
 double rbf_kernel(const double* x, const double* x_prime, double sigma, int dim) {
     double squared_dist = squared_norm(x, x_prime, dim);
     return std::exp(-squared_dist / (2 * sigma * sigma));
 }
 
+// Compute the conformal factor G(x)
 double G(const double* x, const double* initial_elements, const double* ux, int num_elements, int dim, double E) {
     double sum = 0.0;
     for (int i = 0; i < num_elements; i++) {
@@ -34,6 +37,7 @@ double G(const double* x, const double* initial_elements, const double* ux, int 
     return sum;
 }
 
+// Conformal Kernel Function
 double conformal_kernel(const double* x, const double* x_prime, const Hypersphere& hypersphere, double sigma, double E, int dim) {
     double G_x = G(x, hypersphere.initial_elements, hypersphere.ux, hypersphere.num_elements, dim, E);
     double G_x_prime = G(x_prime, hypersphere.initial_elements, hypersphere.ux, hypersphere.num_elements, dim, E);
@@ -41,6 +45,7 @@ double conformal_kernel(const double* x, const double* x_prime, const Hyperspher
     return G_x * rbf * G_x_prime;
 }
 
+// Fuzzy Contribution Function
 extern "C" {
     __declspec(dllexport) void __cdecl fuzzy_contribution(
         const double* x,
@@ -51,11 +56,10 @@ extern "C" {
     ) {
         double min_positive = std::numeric_limits<double>::infinity();
         double min_negative = std::numeric_limits<double>::infinity();
-        double d_to_other_boundary = 0.0;
         int assigned_hypersphere_p = 0;
         int assigned_hypersphere_n = 0;
 
-        // Positive hyperspheres
+        // Compute conformal kernel for positive hyperspheres
         for (int i = 0; i < num_positive; ++i) {
             double k = conformal_kernel(x, positive_hyperspheres[i].center, positive_hyperspheres[i], sigma, E, dim);
             if (k < min_positive) {
@@ -64,7 +68,7 @@ extern "C" {
             }
         }
 
-        // Negative hyperspheres
+        // Compute conformal kernel for negative hyperspheres
         for (int i = 0; i < num_negative; ++i) {
             double k = conformal_kernel(x, negative_hyperspheres[i].center, negative_hyperspheres[i], sigma, E, dim);
             if (k < min_negative) {
@@ -74,18 +78,10 @@ extern "C" {
         }
 
         if (min_positive < min_negative) {
-            const Hypersphere& neg_sphere = negative_hyperspheres[assigned_hypersphere_n];
-            d_to_other_boundary = std::abs(min_negative - neg_sphere.radius);
-            double c_to_cen = 1 - 1 / std::sqrt(min_positive * min_positive + gamma);
-            double c_to_boundary = 1 - 1 / std::sqrt(d_to_other_boundary * d_to_other_boundary + gamma);
-            *contribution = std::max(c_to_cen, c_to_boundary);
+            *contribution = 1.0 - (1.0 / std::sqrt(min_positive + gamma));
             *assigned_class = 1;
         } else if (min_positive > min_negative) {
-            const Hypersphere& ps_sphere = positive_hyperspheres[assigned_hypersphere_p];
-            d_to_other_boundary = std::abs(min_positive - ps_sphere.radius);
-            double c_to_cen = 1 - 1 / std::sqrt(min_negative * min_negative + gamma);
-            double c_to_boundary = 1 - 1 / std::sqrt(d_to_other_boundary * d_to_other_boundary + gamma);
-            *contribution = std::max(c_to_cen, c_to_boundary);
+            *contribution = 1.0 - (1.0 / std::sqrt(min_negative + gamma));
             *assigned_class = -1;
         } else {
             *contribution = 1.0;
@@ -93,6 +89,7 @@ extern "C" {
         }
     }
 
+    // Prediction Function
     __declspec(dllexport) void __cdecl predict(
         const double* transformed_data, int num_samples, int dim,
         const Hypersphere* positive_hyperspheres, int num_positive,

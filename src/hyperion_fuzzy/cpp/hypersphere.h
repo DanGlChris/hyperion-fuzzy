@@ -4,6 +4,7 @@
 #include <vector>
 #include <tuple>
 
+// Define the Hypersphere struct
 struct Hypersphere {
     double* initial_elements;
     double* center;
@@ -22,4 +23,10 @@ struct Hypersphere {
         // Note: ux is const, assume it is managed outside this struct
     }
 };
+
+extern "C" {
+    // Function to get the assignments data
+    __declspec(dllexport) void __cdecl get_assignments(const Hypersphere* sphere, double** output, int* output_size);
+}
+
 #endif // HYPERSPHERE_H
