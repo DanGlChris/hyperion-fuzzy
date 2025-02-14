@@ -65,7 +65,8 @@ extern "C" {
 
         // Compute conformal kernel for positive hyperspheres
         for (int i = 0; i < num_positive; ++i) {
-            double k = conformal_kernel(x, positive_hyperspheres[i].getCenter().data(), positive_hyperspheres[i], sigma, E, dim);
+            double k = conformal_kernel(x, positive_hyperspheres[i].getCenter().data(), 
+                                        positive_hyperspheres[i], sigma, E, dim);
             if (k < min_positive) {
                 min_positive = k;
                 assigned_hypersphere_p = i;
@@ -74,7 +75,8 @@ extern "C" {
 
         // Compute conformal kernel for negative hyperspheres
         for (int i = 0; i < num_negative; ++i) {
-            double k = conformal_kernel(x, negative_hyperspheres[i].getCenter().data(), negative_hyperspheres[i], sigma, E, dim);
+            double k = conformal_kernel(x, negative_hyperspheres[i].getCenter().data(), 
+                                        negative_hyperspheres[i], sigma, E, dim);
             if (k < min_negative) {
                 min_negative = k;
                 assigned_hypersphere_n = i;
@@ -88,7 +90,9 @@ extern "C" {
             double c_to_boundary = 1 - 1 / std::sqrt(d_to_other_boundary + gamma);
             *contribution = std::max(c_to_cen, c_to_boundary);
             *assigned_class = 1;
-            positive_hyperspheres[assigned_hypersphere_p].addAssignment(std::vector<double>(x, x + dim), 1, *contribution);
+            positive_hyperspheres[assigned_hypersphere_p].addAssignment(
+                std::vector<double>(x, x + dim), 1, *contribution
+            );
 
         } else if (min_positive > min_negative) {
             const Hypersphere& ps_sphere = positive_hyperspheres[assigned_hypersphere_p];
@@ -97,7 +101,9 @@ extern "C" {
             double c_to_boundary = 1 - 1 / std::sqrt(d_to_other_boundary + gamma);
             *contribution = std::max(c_to_cen, c_to_boundary);
             *assigned_class = -1;
-            negative_hyperspheres[assigned_hypersphere_n].addAssignment(std::vector<double>(x, x + dim), -1, *contribution);
+            negative_hyperspheres[assigned_hypersphere_n].addAssignment(
+                std::vector<double>(x, x + dim), -1, *contribution
+            );
         } else {
             *contribution = 1.0;
             *assigned_class = 0;

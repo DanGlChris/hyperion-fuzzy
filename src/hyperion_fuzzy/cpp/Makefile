@@ -8,30 +8,25 @@ SRCS = optimize_hypersphere.cpp fuzzy_contribution.cpp hypersphere.cpp test.cpp
 OBJS = $(SRCS:.cpp=.o)
 
 # Target shared libraries
-TARGET_DIR = ../build
-TARGETS = $(TARGET_DIR)/optimize_hypersphere.dll $(TARGET_DIR)/fuzzy_contribution.dll $(TARGET_DIR)/hypersphere.dll $(TARGET_DIR)/test.dll
+TARGETS = ../build/optimize_hypersphere.dll ../build/fuzzy_contribution.dll ../build/hypersphere.dll ../build/test.dll
 
 # Default target (compile everything)
 all: $(TARGETS)
 
-# Create the build directory if it doesn't exist
-$(TARGET_DIR):
-	mkdir -p $(TARGET_DIR)
-
-# Compile optimize_hypersphere.dll (depends on hypersphere)
-$(TARGET_DIR)/optimize_hypersphere.dll: optimize_hypersphere.o hypersphere.o | $(TARGET_DIR)
+# Compile optimize_hypersphere.dll
+../build/optimize_hypersphere.dll: optimize_hypersphere.o hypersphere.o
 	$(CXX) $(LDFLAGS) -o $@ $^
 
-# Compile fuzzy_contribution.dll (depends on hypersphere)
-$(TARGET_DIR)/fuzzy_contribution.dll: fuzzy_contribution.o hypersphere.o | $(TARGET_DIR)
+# Compile fuzzy_contribution.dll (including hypersphere.o)
+../build/fuzzy_contribution.dll: fuzzy_contribution.o hypersphere.o
 	$(CXX) $(LDFLAGS) -o $@ $^
 
 # Compile hypersphere.dll
-$(TARGET_DIR)/hypersphere.dll: hypersphere.o | $(TARGET_DIR)
+../build/hypersphere.dll: hypersphere.o
 	$(CXX) $(LDFLAGS) -o $@ $^
 
-# Compile test.dll (depends on hypersphere)
-$(TARGET_DIR)/test.dll: test.o hypersphere.o | $(TARGET_DIR)
+# Compile test.dll
+../build/test.dll: test.o
 	$(CXX) $(LDFLAGS) -o $@ $^
 
 # Compile object files

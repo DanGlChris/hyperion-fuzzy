@@ -28,10 +28,16 @@ else:
 
 # Load shared libraries
 try:
-    hypersphere_lib = ctypes.CDLL(os.path.join(os.path.dirname(__file__), "build", hypersphere_lib_name))
-    fuzzy_lib = ctypes.CDLL(os.path.join(os.path.dirname(__file__), "build", fuzzy_lib_name))
-    optimize_lib = ctypes.CDLL(os.path.join(os.path.dirname(__file__), "build", optimize_lib_name))
-    test_lib = ctypes.CDLL(os.path.join(os.path.dirname(__file__), "build", test_lib_name))
+    hypersphere_lib_path = os.path.join(os.path.dirname(__file__), 'build', hypersphere_lib_name)
+    fuzzy_lib_path = os.path.join(os.path.dirname(__file__), 'build', fuzzy_lib_name)
+    optimize_lib_path = os.path.join(os.path.dirname(__file__), 'build', optimize_lib_name)
+    test_lib_path = os.path.join(os.path.dirname(__file__), 'build', test_lib_name)
+    
+    
+    test_lib = ctypes.CDLL(test_lib_path)
+    fuzzy_lib = ctypes.CDLL(fuzzy_lib_path)
+    optimize_lib = ctypes.CDLL(optimize_lib_path)
+    hypersphere_lib = ctypes.CDLL(hypersphere_lib_path)
 except OSError as e:
     raise RuntimeError(f"Failed to load shared libraries: {e}")
 
@@ -119,7 +125,7 @@ class Hypersphere:
         return self.radius
 
     def get_ux(self) -> np.ndarray:
-        ux = np.zeros(3, dtype=np.float64)
+        ux = np.zeros(len(self.center), dtype=np.float64)
         hypersphere_lib.get_ux(self.instance, ux.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
         return ux
 
