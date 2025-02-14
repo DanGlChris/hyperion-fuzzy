@@ -49,7 +49,7 @@ double conformal_kernel(const double* x, const double* x_prime, const Hyperspher
 extern "C" {
     __declspec(dllexport) void __cdecl fuzzy_contribution(
         const double* x,
-        const Hypersphere* positive_hyperspheres, const Hypersphere* negative_hyperspheres,
+        Hypersphere* positive_hyperspheres, Hypersphere* negative_hyperspheres,
         int num_positive, int num_negative, int dim,
         double gamma, double sigma, double E,
         int* assigned_class, double* contribution

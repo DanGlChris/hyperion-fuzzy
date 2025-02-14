@@ -8,7 +8,7 @@ SRCS = optimize_hypersphere.cpp fuzzy_contribution.cpp hypersphere.cpp test.cpp
 OBJS = $(SRCS:.cpp=.o)
 
 # Target shared libraries
-TARGETS = ../build/optimize_hypersphere.dll ../build/fuzzy_contribution.dll ../build/test.dll
+TARGETS = ../build/optimize_hypersphere.dll ../build/fuzzy_contribution.dll ../build/hypersphere.dll ../build/test.dll
 
 # Default target (compile everything)
 all: $(TARGETS)
@@ -18,12 +18,16 @@ all: $(TARGETS)
 	$(CXX) $(LDFLAGS) -o $@ $^
 
 # Compile fuzzy_contribution.dll (including hypersphere.o)
-../build/fuzzy_contribution.dll: fuzzy_contribution.o hypersphere.o
+../build/fuzzy_contribution.dll: fuzzy_contribution.o
+	$(CXX) $(LDFLAGS) -o $@ $^
+
+# Compile hypersphere.dll
+../build/hypersphere.dll: hypersphere.o
 	$(CXX) $(LDFLAGS) -o $@ $^
 
 # Compile test.dll
 ../build/test.dll: test.o
-	$(CXX) $(LDFLAGS) -o $@
+	$(CXX) $(LDFLAGS) -o $@ $^
 
 # Compile object files
 %.o: %.cpp
