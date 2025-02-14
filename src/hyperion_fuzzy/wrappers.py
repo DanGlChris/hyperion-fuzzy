@@ -55,6 +55,31 @@ hypersphere_lib.get_ux.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_doub
 
 hypersphere_lib.add_assignment.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_double), ctypes.c_int, ctypes.c_int, ctypes.c_double]
 
+hypersphere_lib.clear_assignments.argtypes = [ctypes.c_void_p]
+
+# New functions to access initialElements and assignments
+hypersphere_lib.get_num_initial_elements.argtypes = [ctypes.c_void_p]
+hypersphere_lib.get_num_initial_elements.restype = ctypes.c_int
+
+hypersphere_lib.get_initial_elements.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_double)]
+
+hypersphere_lib.get_num_assignments.argtypes = [ctypes.c_void_p]
+hypersphere_lib.get_num_assignments.restype = ctypes.c_int
+
+hypersphere_lib.get_assignments.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_double)]
+
+
+# Define argument and return types for optimize_hypersphere function
+optimize_lib.optimize_hypersphere.argtypes = [
+    ctypes.c_void_p,  # Target hypersphere
+    ctypes.POINTER(ctypes.c_void_p), ctypes.c_int,  # Other hyperspheres + count
+    ctypes.c_double,  # c1
+    ctypes.c_double,  # learning_rate
+    ctypes.c_int,  # max_iterations
+    ctypes.c_double,  # tolerance
+    ctypes.c_int  # dim
+]
+
 class Hypersphere:
     def __init__(self, center: np.ndarray, radius: float, initial_elements: np.ndarray):
         center = center.astype(np.float64)
@@ -65,6 +90,11 @@ class Hypersphere:
                                                initial_elements.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
                                                initial_elements.shape[0], initial_elements.shape[1],
                                                ctypes.c_double(radius))
+        
+        self.center = center
+        self.radius = radius
+        self.assignments = []
+        self.element_size = initial_elements.shape[1]
 
     def __del__(self):
         hypersphere_lib.delete_hypersphere(self.instance)
@@ -72,17 +102,21 @@ class Hypersphere:
     def set_center(self, new_center: np.ndarray):
         new_center = new_center.astype(np.float64)
         hypersphere_lib.set_center(self.instance, new_center.ctypes.data_as(ctypes.POINTER(ctypes.c_double)), new_center.size)
+        self.center = new_center  # Sync with C++ memory
 
     def get_center(self) -> np.ndarray:
         center = np.zeros(3, dtype=np.float64)
         hypersphere_lib.get_center(self.instance, center.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
+        self.center = center  # Sync Python object with C++ memory
         return center
 
     def set_radius(self, radius: float):
         hypersphere_lib.set_radius(self.instance, ctypes.c_double(radius))
+        self.radius = radius  # Sync with C++ memory
 
     def get_radius(self) -> float:
-        return hypersphere_lib.get_radius(self.instance)
+        self.radius = hypersphere_lib.get_radius(self.instance)
+        return self.radius
 
     def get_ux(self) -> np.ndarray:
         ux = np.zeros(3, dtype=np.float64)
@@ -91,103 +125,130 @@ class Hypersphere:
 
     def add_assignment(self, array: np.ndarray, value: int, weight: float):
         array = array.astype(np.float64)
-        hypersphere_lib.add_assignment(self.instance, array.ctypes.data_as(ctypes.POINTER(ctypes.c_double)), array.size, value, weight)
+        hypersphere_lib.add_assignment(
+            self.instance, array.ctypes.data_as(ctypes.POINTER(ctypes.c_double)), array.size, value, weight
+        )
+        self.get_assignments()  # Sync Python object with C++ memory
 
     def clear_assignments(self):
         hypersphere_lib.clear_assignments(self.instance)
+        self.assignments = []  # Reset Python-side cache
 
 
-# Define C++ function signatures
-fuzzy_lib.get_assignments.argtypes = [POINTER(HypersphereC), POINTER(POINTER(Assignment)), POINTER(c_int)]
-fuzzy_lib.get_assignments.restype = None
+    def get_initial_elements(self) -> np.ndarray:
+        """Retrieve the initial elements from the hypersphere."""
+        num_elements = hypersphere_lib.get_num_initial_elements(self.instance)
+        if num_elements == 0:
+            return np.array([])
 
-fuzzy_lib.fuzzy_contribution.argtypes = [
-    POINTER(c_double),
-    POINTER(HypersphereC), POINTER(HypersphereC),
-    c_int, c_int, c_int,
-    c_double, c_double, c_double,
-    POINTER(c_int), POINTER(c_double),
-]
-fuzzy_lib.fuzzy_contribution.restype = None
-
-optimize_lib.optimize_hypersphere.argtypes = [
-    POINTER(HypersphereC), POINTER(HypersphereC), c_int,
-    c_double, c_double, c_int, c_double, c_int,
-]
-optimize_lib.optimize_hypersphere.restype = None
-
-# Python Hypersphere class
-class Hypersphere:
-    def __init__(self, center: List[float], radius: float, initial_elements: List[List[float]]):
-        self.dim = len(center)
-        self.center = np.array(center, dtype=np.float64)
-        self.radius = float(radius)
-        self.initial_elements = np.array(initial_elements, dtype=np.float64)
-        self.ux = np.mean(self.initial_elements, axis=0) if len(self.initial_elements) > 0 else np.zeros(self.dim)
-        self.assignments = []
-
-        self.c_hypersphere = HypersphereC(
-            initial_elements=self.initial_elements.ctypes.data_as(POINTER(c_double)),
-            center=self.center.ctypes.data_as(POINTER(c_double)),
-            ux=self.ux.ctypes.data_as(POINTER(c_double)),
-            radius=self.radius,
-            num_elements=len(self.initial_elements),
-        )
-
-    def get_c_structure(self):
-        return byref(self.c_hypersphere)
+        elements = np.zeros((num_elements, self.element_size), dtype=np.float64)
+        hypersphere_lib.get_initial_elements(self.instance, elements.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
+        return elements
 
     def get_assignments(self):
-        output_ptr = POINTER(Assignment)()
-        output_size = c_int()
-        fuzzy_lib.get_assignments(self.get_c_structure(), byref(output_ptr), byref(output_size))
+        """Retrieve all assignments from the hypersphere."""
+        num_assignments = hypersphere_lib.get_num_assignments(self.instance)
+        if num_assignments == 0:
+            return []
 
-        self.assignments = []
-        for i in range(output_size.value):
-            assignment = output_ptr[i]
-            x_array = np.ctypeslib.as_array(assignment.x, shape=(self.dim,))
-            self.assignments.append({"x": x_array.tolist(), "label": assignment.label, "value": assignment.value})
+        assignment_arrays = np.zeros((num_assignments, self.element_size), dtype=np.float64)
+        assignment_values = np.zeros(num_assignments, dtype=np.int32)
+        assignment_weights = np.zeros(num_assignments, dtype=np.float64)
 
+        hypersphere_lib.get_assignments(
+            self.instance,
+            assignment_arrays.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            assignment_values.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+            assignment_weights.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        )
+
+        self.assignments = [(assignment_arrays[i], assignment_values[i], assignment_weights[i]) for i in range(num_assignments)]
         return self.assignments
+    
+    def optimize(self, other_hyperspheres: list, c1: float, learning_rate: float, max_iterations: int, tolerance: float):
+        """Optimize the hypersphere using Dlib and update Python-side values"""
+        num_other = len(other_hyperspheres)
+        other_hypersphere_ptrs = (ctypes.c_void_p * num_other)(*[hs.instance for hs in other_hyperspheres])
 
-# Static functions
-def fuzzy_contribution(x: List[float], pos_hypers: List[Hypersphere], neg_hypers: List[Hypersphere], gamma: float, sigma: float, E: float):
-    x_np = np.array(x, dtype=np.float64)
-    assigned_class = c_int()
-    contribution = c_double()
+        optimize_lib.optimize_hypersphere(
+            self.instance,
+            other_hypersphere_ptrs, num_other,
+            ctypes.c_double(c1),
+            ctypes.c_double(learning_rate),
+            ctypes.c_int(max_iterations),
+            ctypes.c_double(tolerance),
+            ctypes.c_int(self.dim)
+        )
+
+        self.get_center()  # Fetch updated center from C++
+        self.get_radius()  # Fetch updated radius from C++
+
+# Define argument and return types for fuzzy_contribution functions
+fuzzy_lib.fuzzy_contribution.argtypes = [
+    ctypes.POINTER(ctypes.c_double),  # x
+    ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_void_p),  # positive & negative hyperspheres
+    ctypes.c_int, ctypes.c_int, ctypes.c_int,  # num_positive, num_negative, dim
+    ctypes.c_double, ctypes.c_double, ctypes.c_double,  # gamma, sigma, E
+    ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_double)  # assigned_class, contribution
+]
+
+fuzzy_lib.predict.argtypes = [
+    ctypes.POINTER(ctypes.c_double), ctypes.c_int, ctypes.c_int,  # transformed_data, num_samples, dim
+    ctypes.POINTER(ctypes.c_void_p), ctypes.c_int,  # positive hyperspheres & count
+    ctypes.POINTER(ctypes.c_void_p), ctypes.c_int,  # negative hyperspheres & count
+    ctypes.c_double, ctypes.POINTER(ctypes.c_int)  # sigma, predictions (output)
+]
+
+
+def fuzzy_contribution(x: np.ndarray, positive_hyperspheres: list, negative_hyperspheres: list, gamma: float, sigma: float, E: float):
+    x = x.astype(np.float64)
+    dim = x.size
+
+    num_positive = len(positive_hyperspheres)
+    num_negative = len(negative_hyperspheres)
+
+    positive_hypersphere_ptrs = (ctypes.c_void_p * num_positive)(*[hs.instance for hs in positive_hyperspheres])
+    negative_hypersphere_ptrs = (ctypes.c_void_p * num_negative)(*[hs.instance for hs in negative_hyperspheres])
+
+    assigned_class = ctypes.c_int()
+    contribution = ctypes.c_double()
 
     fuzzy_lib.fuzzy_contribution(
-        x_np.ctypes.data_as(POINTER(c_double)),
-        (HypersphereC * len(pos_hypers))(*[hs.c_hypersphere for hs in pos_hypers]),
-        (HypersphereC * len(neg_hypers))(*[hs.c_hypersphere for hs in neg_hypers]),
-        len(pos_hypers), len(neg_hypers), len(x),
-        gamma, sigma, E,
-        byref(assigned_class), byref(contribution),
+        x.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+        positive_hypersphere_ptrs, negative_hypersphere_ptrs,
+        num_positive, num_negative, dim,
+        ctypes.c_double(gamma), ctypes.c_double(sigma), ctypes.c_double(E),
+        ctypes.byref(assigned_class), ctypes.byref(contribution)
     )
+
+    # Retrieve updated assignments
+    for hs in positive_hyperspheres + negative_hyperspheres:
+        hs.get_assignments()  # This syncs the Python object with C++ memory
 
     return assigned_class.value, contribution.value
 
-def optimize_hypersphere(hypersphere: Hypersphere, others: List[Hypersphere], c1: float, learning_rate: float = 0.01, max_iterations: int = 100, tolerance: float = 1e-6):
-    optimize_lib.optimize_hypersphere(
-        byref(hypersphere.c_hypersphere),
-        (HypersphereC * len(others))(*[hs.c_hypersphere for hs in others]),
-        len(others),
-        c1, learning_rate, max_iterations, tolerance, hypersphere.dim,
-    )
 
-def predict(data: np.ndarray, pos_hypers: List[Hypersphere], neg_hypers: List[Hypersphere], sigma: float) -> List[int]:
-    num_samples, dim = data.shape
+def predict(transformed_data: np.ndarray, positive_hyperspheres: list, negative_hyperspheres: list, sigma: float):
+    """Predict class labels for transformed data using hyperspheres."""
+    transformed_data = transformed_data.astype(np.float64)
+    num_samples, dim = transformed_data.shape
+
+    num_positive = len(positive_hyperspheres)
+    num_negative = len(negative_hyperspheres)
+
+    # Convert Hypersphere Python objects to C++ pointers
+    positive_hypersphere_ptrs = (ctypes.c_void_p * num_positive)(*[hs.instance for hs in positive_hyperspheres])
+    negative_hypersphere_ptrs = (ctypes.c_void_p * num_negative)(*[hs.instance for hs in negative_hyperspheres])
+
+    # Allocate memory for the output predictions
     predictions = np.zeros(num_samples, dtype=np.int32)
 
+    # Call the C++ function
     fuzzy_lib.predict(
-        data.ctypes.data_as(POINTER(c_double)),
-        num_samples, dim,
-        (HypersphereC * len(pos_hypers))(*[hs.c_hypersphere for hs in pos_hypers]),
-        len(pos_hypers),
-        (HypersphereC * len(neg_hypers))(*[hs.c_hypersphere for hs in neg_hypers]),
-        len(neg_hypers),
-        sigma,
-        predictions.ctypes.data_as(POINTER(c_int)),
+        transformed_data.ctypes.data_as(ctypes.POINTER(ctypes.c_double)), ctypes.c_int(num_samples), ctypes.c_int(dim),
+        positive_hypersphere_ptrs, ctypes.c_int(num_positive),
+        negative_hypersphere_ptrs, ctypes.c_int(num_negative),
+        ctypes.c_double(sigma), predictions.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
     )
 
-    return predictions.tolist()
+    return predictions

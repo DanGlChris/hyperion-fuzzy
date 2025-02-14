@@ -21,15 +21,19 @@ double rbf_kernel(const double* x, const double* x_prime, double sigma, int dim)
 }
 
 // Compute the conformal factor G(x)
-double G(const double* x, const double* initial_elements, const double* ux, int num_elements, int dim, double E) {
+double G(const double* x, const Hypersphere& hypersphere, int dim, double E) {
+    const std::vector<std::vector<double>>& initial_elements = hypersphere.getInitialElements();
+    const std::vector<double>& ux = hypersphere.getUx();
+    int num_elements = static_cast<int>(initial_elements.size());
+
     double sum = 0.0;
     for (int i = 0; i < num_elements; i++) {
         double distance2 = 0.0;
         double ux_distance2 = 0.0;
         for (int j = 0; j < dim; j++) {
-            double diff = initial_elements[i * dim + j] - x[j];
+            double diff = initial_elements[i][j] - x[j];
             distance2 += diff * diff;
-            double ux_diff = ux[i * dim + j] - initial_elements[i * dim + j];
+            double ux_diff = ux[j] - initial_elements[i][j];
             ux_distance2 += ux_diff * ux_diff;
         }
         sum += std::exp(-distance2 / (ux_distance2 + E));
@@ -39,8 +43,8 @@ double G(const double* x, const double* initial_elements, const double* ux, int 
 
 // Conformal Kernel Function
 double conformal_kernel(const double* x, const double* x_prime, const Hypersphere& hypersphere, double sigma, double E, int dim) {
-    double G_x = G(x, hypersphere.initial_elements, hypersphere.ux, hypersphere.num_elements, dim, E);
-    double G_x_prime = G(x_prime, hypersphere.initial_elements, hypersphere.ux, hypersphere.num_elements, dim, E);
+    double G_x = G(x, hypersphere, dim, E);
+    double G_x_prime = G(x_prime, hypersphere, dim, E);
     double rbf = rbf_kernel(x, x_prime, sigma, dim);
     return G_x * rbf * G_x_prime;
 }
@@ -56,12 +60,12 @@ extern "C" {
     ) {
         double min_positive = std::numeric_limits<double>::infinity();
         double min_negative = std::numeric_limits<double>::infinity();
-        int assigned_hypersphere_p = 0;
-        int assigned_hypersphere_n = 0;
+        int assigned_hypersphere_p = -1;
+        int assigned_hypersphere_n = -1;
 
         // Compute conformal kernel for positive hyperspheres
         for (int i = 0; i < num_positive; ++i) {
-            double k = conformal_kernel(x, positive_hyperspheres[i].center, positive_hyperspheres[i], sigma, E, dim);
+            double k = conformal_kernel(x, positive_hyperspheres[i].getCenter().data(), positive_hyperspheres[i], sigma, E, dim);
             if (k < min_positive) {
                 min_positive = k;
                 assigned_hypersphere_p = i;
@@ -70,7 +74,7 @@ extern "C" {
 
         // Compute conformal kernel for negative hyperspheres
         for (int i = 0; i < num_negative; ++i) {
-            double k = conformal_kernel(x, negative_hyperspheres[i].center, negative_hyperspheres[i], sigma, E, dim);
+            double k = conformal_kernel(x, negative_hyperspheres[i].getCenter().data(), negative_hyperspheres[i], sigma, E, dim);
             if (k < min_negative) {
                 min_negative = k;
                 assigned_hypersphere_n = i;
@@ -78,17 +82,27 @@ extern "C" {
         }
 
         if (min_positive < min_negative) {
-            *contribution = 1.0 - (1.0 / std::sqrt(min_positive + gamma));
+            const Hypersphere& neg_sphere = negative_hyperspheres[assigned_hypersphere_n];
+            double d_to_other_boundary = std::abs(min_negative - neg_sphere.getRadius());
+            double c_to_cen = 1 - 1 / std::sqrt(min_positive + gamma);
+            double c_to_boundary = 1 - 1 / std::sqrt(d_to_other_boundary + gamma);
+            *contribution = std::max(c_to_cen, c_to_boundary);
             *assigned_class = 1;
+            positive_hyperspheres[assigned_hypersphere_p].addAssignment(std::vector<double>(x, x + dim), 1, *contribution);
+
         } else if (min_positive > min_negative) {
-            *contribution = 1.0 - (1.0 / std::sqrt(min_negative + gamma));
+            const Hypersphere& ps_sphere = positive_hyperspheres[assigned_hypersphere_p];
+            double d_to_other_boundary = std::abs(min_positive - ps_sphere.getRadius());
+            double c_to_cen = 1 - 1 / std::sqrt(min_negative + gamma);
+            double c_to_boundary = 1 - 1 / std::sqrt(d_to_other_boundary + gamma);
+            *contribution = std::max(c_to_cen, c_to_boundary);
             *assigned_class = -1;
+            negative_hyperspheres[assigned_hypersphere_n].addAssignment(std::vector<double>(x, x + dim), -1, *contribution);
         } else {
             *contribution = 1.0;
             *assigned_class = 0;
         }
     }
-
     // Prediction Function
     __declspec(dllexport) void __cdecl predict(
         const double* transformed_data, int num_samples, int dim,
@@ -103,15 +117,15 @@ extern "C" {
             std::vector<double> memberships_n(num_negative);
 
             for (int j = 0; j < num_positive; ++j) {
-                memberships_p[j] = conformal_kernel(x, positive_hyperspheres[j].center, positive_hyperspheres[j], sigma, 0.0, dim);
+                memberships_p[j] = conformal_kernel(x, positive_hyperspheres[j].getCenter().data(), positive_hyperspheres[j], sigma, 0.0, dim);
             }
 
             for (int j = 0; j < num_negative; ++j) {
-                memberships_n[j] = conformal_kernel(x, negative_hyperspheres[j].center, negative_hyperspheres[j], sigma, 0.0, dim);
+                memberships_n[j] = conformal_kernel(x, negative_hyperspheres[j].getCenter().data(), negative_hyperspheres[j], sigma, 0.0, dim);
             }
 
-            double max_membership_p = *std::max_element(memberships_p.begin(), memberships_p.end());
-            double max_membership_n = *std::max_element(memberships_n.begin(), memberships_n.end());
+            double max_membership_p = *std::min_element(memberships_p.begin(), memberships_p.end());
+            double max_membership_n = *std::min_element(memberships_n.begin(), memberships_n.end());
 
             if (max_membership_p > max_membership_n) {
                 predictions[i] = 1;
