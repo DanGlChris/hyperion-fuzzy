@@ -1,8 +1,8 @@
 #include <cmath>
 #include <limits>
-#include <vector>
 #include <algorithm>
-#include "hypersphere.h"
+#include "../include/fuzzy_contribution.h"
+#include <iostream>
 
 // Compute squared Euclidean distance
 double squared_norm(const double* x, const double* x_prime, int dim) {
@@ -50,96 +50,93 @@ double conformal_kernel(const double* x, const double* x_prime, const Hyperspher
 }
 
 // Fuzzy Contribution Function
-extern "C" {
-    __declspec(dllexport) void __cdecl fuzzy_contribution(
-        const double* x,
-        Hypersphere* positive_hyperspheres, Hypersphere* negative_hyperspheres,
-        int num_positive, int num_negative, int dim,
-        double gamma, double sigma, double E,
-        int* assigned_class, double* contribution
+void fuzzy_contribution(
+    const double* x,
+    std::vector<Hypersphere>& positive_hyperspheres, std::vector<Hypersphere>& negative_hyperspheres,
+    double gamma, double sigma, double E,
+    int& assigned_class, double& contribution, int dim
     ) {
-        double min_positive = std::numeric_limits<double>::infinity();
-        double min_negative = std::numeric_limits<double>::infinity();
-        int assigned_hypersphere_p = -1;
-        int assigned_hypersphere_n = -1;
+    double min_positive = std::numeric_limits<double>::infinity();
+    double min_negative = std::numeric_limits<double>::infinity();
+    int assigned_hypersphere_p = -1;
+    int assigned_hypersphere_n = -1;
 
-        // Compute conformal kernel for positive hyperspheres
-        for (int i = 0; i < num_positive; ++i) {
-            double k = conformal_kernel(x, positive_hyperspheres[i].getCenter().data(), 
-                                        positive_hyperspheres[i], sigma, E, dim);
-            if (k < min_positive) {
-                min_positive = k;
-                assigned_hypersphere_p = i;
-            }
-        }
-
-        // Compute conformal kernel for negative hyperspheres
-        for (int i = 0; i < num_negative; ++i) {
-            double k = conformal_kernel(x, negative_hyperspheres[i].getCenter().data(), 
-                                        negative_hyperspheres[i], sigma, E, dim);
-            if (k < min_negative) {
-                min_negative = k;
-                assigned_hypersphere_n = i;
-            }
-        }
-
-        if (min_positive < min_negative) {
-            const Hypersphere& neg_sphere = negative_hyperspheres[assigned_hypersphere_n];
-            double d_to_other_boundary = std::abs(min_negative - neg_sphere.getRadius());
-            double c_to_cen = 1 - 1 / std::sqrt(min_positive + gamma);
-            double c_to_boundary = 1 - 1 / std::sqrt(d_to_other_boundary + gamma);
-            *contribution = std::max(c_to_cen, c_to_boundary);
-            *assigned_class = 1;
-            positive_hyperspheres[assigned_hypersphere_p].addAssignment(
-                std::vector<double>(x, x + dim), 1, *contribution
-            );
-
-        } else if (min_positive > min_negative) {
-            const Hypersphere& ps_sphere = positive_hyperspheres[assigned_hypersphere_p];
-            double d_to_other_boundary = std::abs(min_positive - ps_sphere.getRadius());
-            double c_to_cen = 1 - 1 / std::sqrt(min_negative + gamma);
-            double c_to_boundary = 1 - 1 / std::sqrt(d_to_other_boundary + gamma);
-            *contribution = std::max(c_to_cen, c_to_boundary);
-            *assigned_class = -1;
-            negative_hyperspheres[assigned_hypersphere_n].addAssignment(
-                std::vector<double>(x, x + dim), -1, *contribution
-            );
-        } else {
-            *contribution = 1.0;
-            *assigned_class = 0;
+    // Compute conformal kernel for positive hyperspheres
+    for (int i = 0; i < positive_hyperspheres.size(); ++i) {
+        double k = conformal_kernel(x, positive_hyperspheres[i].getCenter().data(),
+                                    positive_hyperspheres[i], sigma, E, dim);
+        if (k < min_positive) {
+            min_positive = k;
+            assigned_hypersphere_p = i;
         }
     }
-    // Prediction Function
-    __declspec(dllexport) void __cdecl predict(
-        const double* transformed_data, int num_samples, int dim,
-        const Hypersphere* positive_hyperspheres, int num_positive,
-        const Hypersphere* negative_hyperspheres, int num_negative,
-        double sigma, int* predictions
+
+    // Compute conformal kernel for negative hyperspheres
+    for (int i = 0; i < negative_hyperspheres.size(); ++i) {
+        double k = conformal_kernel(x, negative_hyperspheres[i].getCenter().data(),
+                                    negative_hyperspheres[i], sigma, E, dim);
+        if (k < min_negative) {
+            min_negative = k;
+            assigned_hypersphere_n = i;
+        }
+    }
+
+    if (min_positive < min_negative) {
+        const Hypersphere& neg_sphere = negative_hyperspheres[assigned_hypersphere_n];
+        double d_to_other_boundary = std::abs(min_negative - neg_sphere.getRadius());
+        double c_to_cen = 1 - 1 / std::sqrt(min_positive + gamma);
+        double c_to_boundary = 1 - 1 / std::sqrt(d_to_other_boundary + gamma);
+        contribution = std::max(c_to_cen, c_to_boundary);
+        assigned_class = 1;
+        positive_hyperspheres[assigned_hypersphere_p].addAssignment(
+            std::vector<double>(x, x + dim), 1, contribution
+        );
+
+    } else if (min_positive > min_negative) {
+        const Hypersphere& ps_sphere = positive_hyperspheres[assigned_hypersphere_p];
+        double d_to_other_boundary = std::abs(min_positive - ps_sphere.getRadius());
+        double c_to_cen = 1 - 1 / std::sqrt(min_negative + gamma);
+        double c_to_boundary = 1 - 1 / std::sqrt(d_to_other_boundary + gamma);
+        contribution = std::max(c_to_cen, c_to_boundary);
+        assigned_class = -1;
+        negative_hyperspheres[assigned_hypersphere_n].addAssignment(
+            std::vector<double>(x, x + dim), -1, contribution
+        );
+    } else {
+        contribution = 1.0;
+        assigned_class = 0;
+    }
+}
+// Prediction Function
+void predict(
+    const double* transformed_data, int num_samples, int dim,
+    const std::vector<Hypersphere>& positive_hyperspheres,
+    const std::vector<Hypersphere>& negative_hyperspheres,
+    double sigma, int* predictions
     ) {
-        for (int i = 0; i < num_samples; ++i) {
-            const double* x = &transformed_data[i * dim];
+    for (int i = 0; i < num_samples; ++i) {
+        const double* x = &transformed_data[i * dim];
 
-            std::vector<double> memberships_p(num_positive);
-            std::vector<double> memberships_n(num_negative);
+        std::vector<double> memberships_p(positive_hyperspheres.size());
+        std::vector<double> memberships_n(negative_hyperspheres.size());
 
-            for (int j = 0; j < num_positive; ++j) {
-                memberships_p[j] = conformal_kernel(x, positive_hyperspheres[j].getCenter().data(), positive_hyperspheres[j], sigma, 0.0, dim);
-            }
+        for (int j = 0; j < positive_hyperspheres.size(); ++j) {
+            memberships_p[j] = conformal_kernel(x, positive_hyperspheres[j].getCenter().data(), positive_hyperspheres[j], sigma, 0.0, dim);
+        }
 
-            for (int j = 0; j < num_negative; ++j) {
-                memberships_n[j] = conformal_kernel(x, negative_hyperspheres[j].getCenter().data(), negative_hyperspheres[j], sigma, 0.0, dim);
-            }
+        for (int j = 0; j < negative_hyperspheres.size(); ++j) {
+            memberships_n[j] = conformal_kernel(x, negative_hyperspheres[j].getCenter().data(), negative_hyperspheres[j], sigma, 0.0, dim);
+        }
 
-            double max_membership_p = *std::min_element(memberships_p.begin(), memberships_p.end());
-            double max_membership_n = *std::min_element(memberships_n.begin(), memberships_n.end());
+        double max_membership_p = memberships_p.empty() ? std::numeric_limits<double>::infinity() : *std::min_element(memberships_p.begin(), memberships_p.end());
+        double max_membership_n = memberships_n.empty() ? std::numeric_limits<double>::infinity() : *std::min_element(memberships_n.begin(), memberships_n.end());
 
-            if (max_membership_p > max_membership_n) {
-                predictions[i] = 1;
-            } else if (max_membership_n > max_membership_p) {
-                predictions[i] = -1;
-            } else {
-                predictions[i] = 0;
-            }
+        if (max_membership_p < max_membership_n) {
+            predictions[i] = 1;
+        } else if (max_membership_n < max_membership_p) {
+            predictions[i] = -1;
+        } else {
+            predictions[i] = 0;
         }
     }
 }
